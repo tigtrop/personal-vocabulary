@@ -1,14 +1,13 @@
 from typing import Final
-from telegram import Update
-from telegram.ext import  Application, CommandHandler, MessageHandler,filters, ContextTypes
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from googletrans import Translator
 
 # Key handling
-
 file_path = "C:/DictionaryBOT/keys/key.txt"
-
 try:
     with open(file_path, 'r') as file:
-        key = file.read()  # Read the content of the file into the key variable
+        key = file.read().strip()
     print("Key successfully loaded!")
 except FileNotFoundError:
     print(f"File not found: {file_path}")
@@ -17,46 +16,41 @@ except Exception as e:
 
 TOKEN: Final = key
 BOT_USERNAME: Final = '@DictionaryFYbot'
+user_languages = {}
+translator = Translator()
+
 
 # Commands
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('Hello! I will save and translate some words for you.')
+    keyboard = [["English", "Spanish"], ["French", "German"], ["Italian", "Russian"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("Choose your base language:", reply_markup=reply_markup)
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('Just put a word')
 
-# Respondes
+async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.chat.id
+    language = update.message.text.lower()
+    user_languages[user_id] = language
+    await update.message.reply_text("Your base language is saved.")
+    await update.message.reply_text("Enter word for translation:")
 
-def handle_response(text: str) -> str:
-    proccesed: str = text.lower()
 
-    if 'Hello' in text:
-        return 'You hello'
+async def translate_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.chat.id
+    text = update.message.text
 
-    return 'Try again.'
+    if user_id not in user_languages:
+        await update.message.reply_text("Please select a base language first by typing /start.")
+        return
 
-async  def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message_type: str = update.message.chat.type
-    text: str = update.message.text
+    base_language = user_languages[user_id]
+    detected_lang = translator.detect(text).lang
+    translation = translator.translate(text, src=detected_lang, dest=base_language).text
 
-    print(f'User ({update.message.chat.id}) in {message_type}: "{text}"')
+    await update.message.reply_text(f"Translated: {translation}")
 
-    if message_type == 'group':
-        if BOT_USERNAME in text:
-            new_text: str = text.replace(BOT_USERNAME, '').strip()
-            response: str = handle_response(new_text)
-        else:
-            return
 
-    else:
-        response: str = handle_response(text)
-
-    print('Bot:', response)
-    await  update.message.reply_text(response)
-
-async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f'Update {update} caused error {context.error}')
-
+# Bot setup
 if __name__ == '__main__':
     print('Starting bot...')
     app = Application.builder().token(TOKEN).build()
@@ -64,27 +58,11 @@ if __name__ == '__main__':
     # Commands
     app.add_handler(CommandHandler('start', start_command))
 
-    # Messages
+    # Language selection
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_language))
 
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
-
-    # Errors
-
-    app.add_error_handler(error)
-
-    # Polls the bot
+    # Translation handling
+    app.add_handler(MessageHandler(filters.TEXT, translate_message))
 
     print('Polling...')
     app.run_polling(poll_interval=5)
-
-
-
-
-
-
-
-
-
-
-
-
