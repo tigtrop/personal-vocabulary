@@ -22,17 +22,22 @@ translator = Translator()
 
 # Commands
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [["English", "Spanish"], ["French", "German"], ["Italian", "Russian"]]
+    keyboard = [["English", "Spanish"], ["French", "German"], ["Italian", "Ukrainian"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text("Choose your base language:", reply_markup=reply_markup)
+    context.user_data['waiting_for_language'] = True
 
 
 async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.chat.id
-    language = update.message.text.lower()
-    user_languages[user_id] = language
-    await update.message.reply_text("Your base language is saved.")
-    await update.message.reply_text("Enter word for translation:")
+    if 'waiting_for_language' in context.user_data and context.user_data['waiting_for_language']:
+        language = update.message.text.lower()
+        user_languages[user_id] = language
+        context.user_data['waiting_for_language'] = False
+        await update.message.reply_text("Your base language is saved.")
+        await update.message.reply_text("Enter word for translation:")
+    else:
+        await translate_message(update, context)
 
 
 async def translate_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -44,8 +49,8 @@ async def translate_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     base_language = user_languages[user_id]
-    detected_lang = translator.detect(text).lang
-    translation = translator.translate(text, src=detected_lang, dest=base_language).text
+    detected_lang = (await translator.detect(text)).lang
+    translation = (await translator.translate(text, src=detected_lang, dest=base_language)).text
 
     await update.message.reply_text(f"Translated: {translation}")
 
@@ -60,9 +65,6 @@ if __name__ == '__main__':
 
     # Language selection
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_language))
-
-    # Translation handling
-    app.add_handler(MessageHandler(filters.TEXT, translate_message))
 
     print('Polling...')
     app.run_polling(poll_interval=5)
